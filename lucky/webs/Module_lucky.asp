@@ -116,15 +116,13 @@ i {
 	line-height:1.8;
 	visibility:hidden;
 }
-.pop_div_bg{
-}
+
 .QISform_wireless {
 	width:690px;
 	font-size:14px;
 	color:#FFFFFF;
 }
-#lucky_db_settings_div{
-}
+
 </style>
 <script type="text/javascript">
 var dbus = {};

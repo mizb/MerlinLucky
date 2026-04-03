@@ -3,7 +3,7 @@ eval $(dbus export lucky_)
 source /koolshare/scripts/base.sh
 
 if [ "$lucky_enable" == "1" ];then
-	echo_date "先关闭Luckky插件！"
+	echo_date "先关闭Lucky插件！"
 	sh /koolshare/scripts/lucky_config.sh stop
 fi
 
