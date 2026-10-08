@@ -207,7 +207,7 @@ jobs:
 
           # 5. 生成 ARM64 离线安装包 (主安装包)
           cp -f tmp_download/lucky_arm64 lucky/bin/lucky
-          chmod +x lucky/bin/lucky
+          chmod +x lucky/bin/lucky lucky/install.sh lucky/uninstall.sh lucky/scripts/*.sh
 
           # 打包 ARM64
           tar --exclude='.git*' --exclude='.github' --exclude='*.tar.gz' \
@@ -218,7 +218,7 @@ jobs:
           # 6. 生成 ARMv7 离线安装包 (如果存在)
           if [ -f tmp_download/lucky_armv7 ]; then
             cp -f tmp_download/lucky_armv7 lucky/bin/lucky
-            chmod +x lucky/bin/lucky
+            chmod +x lucky/bin/lucky lucky/install.sh lucky/uninstall.sh lucky/scripts/*.sh
             tar --exclude='.git*' --exclude='.github' --exclude='*.tar.gz' \
                 --exclude='*.backup' --exclude='tmp_download' -czf "MerlinLucky_v${VERSION}_armv7.tar.gz" lucky/
             MD5_ARMV7=$(md5sum "MerlinLucky_v${VERSION}_armv7.tar.gz" | cut -d' ' -f1)
