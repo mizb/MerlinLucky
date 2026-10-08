@@ -146,7 +146,7 @@ install_now() {
 	# dbus value
 	echo_date "设置插件默认参数..."
 	dbus set lucky_version="${PLVER}"
-	dbus set lucky_binary="2.10.9"
+	dbus set lucky_binary="${PLVER}"
 	dbus set softcenter_module_lucky_version="${PLVER}"
 	dbus set softcenter_module_lucky_install="1"
 	dbus set softcenter_module_lucky_name="${module}"
