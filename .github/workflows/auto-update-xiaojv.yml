@@ -269,7 +269,8 @@ jobs:
           tag_name: "v${{ steps.check_beta.outputs.version }}"
           name: "MerlinLucky v${{ steps.check_beta.outputs.version }} (XiaoJV 纯轻量版)"
           draft: false
-          prerelease: true
+          prerelease: false
+          make_latest: true
           body: |
             ### 🍭 Lucky ${{ steps.check_beta.outputs.beta_folder }} (XiaoJV 纯轻量版) 梅林离线安装包
 
