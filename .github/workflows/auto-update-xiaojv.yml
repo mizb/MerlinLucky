@@ -2,8 +2,8 @@ name: Auto Update Lucky XiaoJV
 
 on:
   schedule:
-    # 每天 UTC 03:00 (北京时间 11:00) 自动检查一次
-    - cron: '0 3 * * *'
+    # 每 2 小时自动检查一次 (错开整点高峰以秒级触发，全天候 24 小时自动巡检)
+    - cron: '20 */2 * * *'
   workflow_dispatch:
     inputs:
       force_update:
