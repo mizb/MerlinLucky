@@ -79,7 +79,10 @@ start_lucky_process(){
 	echo_date "🟠启动 Lucky 进程..."
 	rm -rf /var/run/lucky.pid /tmp/var/lucky.pid /tmp/lucky.pid
 
-	# 内存调优参数：限制 Go 运行时内存上限并积极释放内存到操作系统
+	# 1. 提升最大文件句柄限制，保障大流量穿透与反向代理连接不掉线 (杜绝 Too many open files)
+	ulimit -n 65535 2>/dev/null || ulimit -n 4096 2>/dev/null
+
+	# 2. 内存调优参数：限制 Go 运行时内存上限并积极释放物理内存
 	export GOMEMLIMIT=24MiB
 	export GODEBUG=madvdontneed=1
 
@@ -172,8 +175,9 @@ reset_param() {
 }
 
 close_lucky(){
-	# 1. remove log
+	# 1. remove and limit log
 	rm -rf ${LUCKY_LOG_FILE}
+	[ -f "${LOG_FILE}" ] && [ $(wc -c < "${LOG_FILE}" 2>/dev/null || echo 0) -gt 102400 ] && tail -n 200 "${LOG_FILE}" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "${LOG_FILE}"
 
 	# 2. stop 
 	close_lucky_process
