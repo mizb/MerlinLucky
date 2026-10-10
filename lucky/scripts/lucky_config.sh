@@ -54,17 +54,7 @@ check_status(){
 	local LUCKY_PID=$(pidof lucky)
 	if [ "${lucky_enable}" == "1" ]; then
 		if [ -n "${LUCKY_PID}" ]; then
-			if [ "${lucky_watchdog}" == "1" ]; then
-				local lucky_time=$(perpls|grep lucky|grep -Eo "uptime.+-s\ " | awk -F" |:|/" '{print $3}')
-				lucky_time="${lucky_time%s}"
-				if [ -n "${lucky_time}" ]; then
-					local ret="Lucky 进程运行正常！（PID：${LUCKY_PID} , 守护运行时间：$(formatTime $lucky_time)）"
-				else
-					local ret="Lucky 进程运行正常！（PID：${LUCKY_PID}）"
-				fi
-			else
-				local ret="Lucky 进程运行正常！（PID：${LUCKY_PID}）"
-			fi
+			local ret="Lucky 进程运行正常！（PID：${LUCKY_PID}）"
 		else
 			local ret="Lucky 进程未运行！"
 		fi
@@ -74,70 +64,28 @@ check_status(){
 	http_response "$ret"
 }
 
-formatTime() {
-	seconds=$1
-
-	hours=$(( seconds / 3600 ))
-	minutes=$(( (seconds % 3600) / 60 ))
-	remainingSeconds=$(( seconds % 60 ))
-
-	timeString=""
-
-	if [ $hours -gt 0 ]; then
-		timeString="${hours}时"
-	fi
-
-	if [ $minutes -gt 0 ] || [ $hours -gt 0 ]; then
-		timeString="${timeString}${minutes}分"
-	fi
-
-	if [ $remainingSeconds -gt 0 ] || [ $minutes -gt 0 ] || [ $hours -gt 0 ]; then
-		timeString="${timeString}${remainingSeconds}秒"
-	fi
-
-	echo "$timeString"
-}
-
 close_lucky_process(){
-	lucky_process=$(pidof lucky)
+	local lucky_process=$(pidof lucky)
 	if [ -n "${lucky_process}" ]; then
 		echo_date "⛔关闭Lucky进程..."
-		if [ -f "/koolshare/perp/lucky/rc.main" ]; then
-			perpctl d lucky >/dev/null 2>&1
-		fi
-		rm -rf /koolshare/perp/lucky
 		killall lucky >/dev/null 2>&1
 		kill -9 "${lucky_process}" >/dev/null 2>&1
+		rm -rf /var/run/lucky.pid /tmp/var/lucky.pid /tmp/lucky.pid /koolshare/perp/lucky
 	fi
 }
 
 start_lucky_process(){
 	rm -rf ${LUCKY_LOG_FILE}
-	if [ "${lucky_watchdog}" == "1" ]; then
-		echo_date "🟠启动 Lucky 进程，开启进程实时守护..."
-		mkdir -p /koolshare/perp/lucky
-		cat >/koolshare/perp/lucky/rc.main <<-EOF
-			#!/bin/sh
-			/koolshare/scripts/base.sh
-			if test \${1} = 'start' ; then
-				exec lucky -cd /koolshare/configs/lucky/
-			fi
-			exit 0
+	echo_date "🟠启动 Lucky 进程..."
+	rm -rf /var/run/lucky.pid /tmp/var/lucky.pid /tmp/lucky.pid
 
-		EOF
-		chmod +x /koolshare/perp/lucky/rc.main
-		chmod +t /koolshare/perp/lucky/
-		sync
-		perpctl A lucky >/dev/null 2>&1
-		perpctl u lucky >/dev/null 2>&1
-		detect_running_status lucky
-	else
-		echo_date "🟠启动 Lucky 进程..."
-		rm -rf /tmp/lucky.pid
-		start-stop-daemon -S -q -b -m -p /tmp/var/lucky.pid -x /koolshare/bin/lucky -- -cd /koolshare/configs/lucky/
-		sleep 2
-		detect_running_status lucky
-	fi
+	# 内存调优参数：限制 Go 运行时内存上限并积极释放内存到操作系统
+	export GOMEMLIMIT=24MiB
+	export GODEBUG=madvdontneed=1
+
+	start-stop-daemon -S -q -b -m -p /var/run/lucky.pid -x /koolshare/bin/lucky -- -cd /koolshare/configs/lucky/
+	sleep 1
+	detect_running_status lucky
 }
 
 read_version() {
@@ -145,18 +93,16 @@ read_version() {
 	info=$(lucky -info)
 
 	# 解析版本号
-    version=$(echo $info | grep -o '"Version":"[^"]*"' | sed 's/"Version":"\([^"]*\)"/\1/')
+	version=$(echo $info | grep -o '"Version":"[^"]*"' | sed 's/"Version":"\([^"]*\)"/\1/')
 	
 	# 检查是否成功提取版本号
-    if [ -z "$version" ]; then
-        echo_date "❌获取Lucky内核版本号，请稍后重试."
-        return 1
-    else
-        echo_date "🍭Lucky内核版本号为：$version"
-        dbus set lucky_binary="$version"
-    fi
-
-    
+	if [ -z "$version" ]; then
+		echo_date "❌获取Lucky内核版本号，请稍后重试."
+		return 1
+	else
+		echo_date "🍭Lucky内核版本号为：$version"
+		dbus set lucky_binary="$version"
+	fi
 }
 
 read_base_info() {
@@ -164,29 +110,24 @@ read_base_info() {
 	baseConfInfo=$(lucky -cd /koolshare/configs/lucky -baseConfInfo)
 
 	# 解析端口号
-    lucky_port=$(echo "$baseConfInfo" | grep -o '"AdminWebListenPort":[0-9]*' | sed 's/"AdminWebListenPort"://')
+	lucky_port=$(echo "$baseConfInfo" | grep -o '"AdminWebListenPort":[0-9]*' | sed 's/"AdminWebListenPort"://')
 	# 解析安全路径
 	lucky_safeurl=$(echo "$baseConfInfo" | grep -o '"SafeURL":"[^"]*"' | sed 's/"SafeURL":"\([^"]*\)"/\1/')
 
-	
 	# 检查是否成功提取端口号
-    if [ -z "$lucky_port" ]; then
-        echo "❌获取Lucky端口失败，请稍后重试."
-        return 1
-    else
-    	echo_date "🍭Lucky端口号为：$lucky_port"
-        dbus set lucky_port="$lucky_port"
-	    dbus set lucky_safeurl="$lucky_safeurl"
-
-    fi
-
+	if [ -z "$lucky_port" ]; then
+		echo "❌获取Lucky端口失败，请稍后重试."
+		return 1
+	else
+		echo_date "🍭Lucky端口号为：$lucky_port"
+		dbus set lucky_port="$lucky_port"
+		dbus set lucky_safeurl="$lucky_safeurl"
+	fi
 }
 
 reset_param() {
-
 	# 检查进程是否存在
 	if pidof lucky > /dev/null; then
-
 		# 初始化命令
 		command="lucky -cd /koolshare/configs/lucky"
 
@@ -243,20 +184,16 @@ start_lucky(){
 	close_lucky_process
 
 	# 2. 检查版本号
-    read_version
-    sleep 1
+	read_version
+	sleep 1
 
-    # 3. 读取端口
-    read_base_info
+	# 3. 读取端口
+	read_base_info
 	sleep 1
 
 	# 4. start process
 	start_lucky_process
-
-
-
 }
-
 
 case $1 in
 start)
@@ -274,7 +211,7 @@ boot_up)
 	;;
 start_nat)
 	if [ "${lucky_enable}" == "1" ]; then
-	    logger "[软件中心]-[${0##*/}]: NAT重启触发重新启动Lucky！"
+		logger "[软件中心]-[${0##*/}]: NAT重启触发重新启动Lucky！"
 		lucky -cd /koolshare/configs/lucky -rRestart
 	fi
 	;;	
@@ -289,7 +226,7 @@ web_submit)
 	true > ${LOG_FILE}
 	http_response "$1"
 	if [ "${lucky_enable}" == "1" ]; then
-		echo_date "▶️开启Lucy！" | tee -a ${LOG_FILE}
+		echo_date "▶️开启Lucky！" | tee -a ${LOG_FILE}
 		start_lucky | tee -a ${LOG_FILE}
 	elif [ "${lucky_enable}" == "2" ]; then
 		echo_date "🔁重启Lucky！" | tee -a ${LOG_FILE}
@@ -309,5 +246,4 @@ web_submit)
 status)
 	check_status
 	;;
-
 esac

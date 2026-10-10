@@ -132,7 +132,7 @@ var count_down;
 var _responseLen;
 var STATUS_FLAG;
 var noChange = 0;
-var params_check = ['lucky_watchdog','lucky_reset_safeurl','lucky_reset_user','lucky_reset_port','lucky_reset_disable'];
+var params_check = ['lucky_reset_safeurl','lucky_reset_user','lucky_reset_port','lucky_reset_disable'];
 var params_input = ['lucky_port','lucky_safeurl'];
 
 String.prototype.myReplace = function(f, e){
@@ -510,21 +510,6 @@ function validateInput(input, minValue, maxValue) {
 													<th>访问</th>
 													<td>
 														<a type="button" style="vertical-align:middle;cursor:pointer;" id="dgnav" class="ks_btn" href="" target="_blank">访问 Lucky</a>
-													</td>
-												</tr>
-											</table>
-										</div>
-										<div style="margin-top:10px">
-											<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">
-												<thead>
-													<tr>
-														<td colspan="2">Lucky - 设置</td>
-													</tr>
-												</thead>
-												<tr>
-													<th>实时进程守护</th>
-													<td>
-														<input type="checkbox" id="lucky_watchdog" style="vertical-align:middle;">
 													</td>
 												</tr>
 											</table>

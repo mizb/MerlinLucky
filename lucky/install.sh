@@ -99,13 +99,7 @@ install_now() {
 	local DESCR="端口转发/DDNS/Web服务/Stun内网穿透/网络唤醒/计划任务/ACME自动证书/网络存储"
 	local PLVER=$(cat ${DIR}/version)
 
-	# delete crontabs job first
-	if [ -n "$(cru l | grep lucky_watchdog)" ]; then
-		echo_date "删除Lucky看门狗任务..."
-		cru d lucky_watchdog 2>&1
-	fi
-
-	# stop ddns-go
+	# stop lucky
 	local lucky_enable=$(dbus get lucky_enable)
 	local lucky_process=$(pidof lucky)
 	local lucky_install=$(dbus get softcenter_module_lucky_install)
@@ -114,21 +108,23 @@ install_now() {
 		sh /koolshare/scripts/lucky_config.sh stop
 	fi
 
-	# create ddns-go config dirctory
+	# create lucky config dirctory
 	mkdir -p /koolshare/configs/lucky
 	
 	# remove some files first, old file should be removed, too
 	find /koolshare/init.d/ -name "*lucky*" | xargs rm -rf
+	rm -rf /koolshare/perp/lucky 2>/dev/null
+	rm -rf /var/run/lucky.pid /tmp/var/lucky.pid /tmp/lucky.pid 2>/dev/null
 	rm -rf /koolshare/scripts/lucky*.sh 2>/dev/null
 	rm -rf /koolshare/scripts/*lucky.sh 2>/dev/null
 	rm -rf /koolshare/bin/lucky 2>/dev/null
 
-	# isntall file
+	# install file
 	echo_date "安装插件相关文件..."
 	cp -rf /tmp/${module}/bin/lucky /koolshare/bin/
 	if [ "$lucky_install" != "1" ];then
-	cp -rf /tmp/${module}/bin/lucky_base.lkcf /koolshare/configs/lucky/
-  fi
+		cp -rf /tmp/${module}/bin/lucky_base.lkcf /koolshare/configs/lucky/
+	fi
 	cp -rf /tmp/${module}/res/* /koolshare/res/
 	cp -rf /tmp/${module}/scripts/* /koolshare/scripts/
 	cp -rf /tmp/${module}/webs/* /koolshare/webs/
@@ -154,7 +150,7 @@ install_now() {
 	dbus set softcenter_module_lucky_description="${DESCR}"
 
 	# 检查插件默认dbus值
-	dbus_nset lucky_watchdog "0"
+	dbus remove lucky_watchdog 2>/dev/null
 	dbus_nset lucky_enable "0"
 	dbus_nset lucky_port "16601"
 	dbus_nset lucky_reset_disable "0"
