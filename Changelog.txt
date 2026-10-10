@@ -1,4 +1,7 @@
 3.1.4
+   - update     从 release.66666.host 自动同步至最新 v3.1.4beta (纯轻量 XiaoJV版, 适配华硕天选AX6000等ARM64机型) [2026-10-10]
+
+3.1.4
    - perf       上调最大文件句柄限制 (ulimit -n 65535)，杜绝高并发穿透与大流量反代连接溢出 (Too many open files) [2026-10-10]
    - perf       增加日志大小自动限制与轮转机制，严格保护路由器闪存与内存盘空间 [2026-10-10]
    - optimize   彻底移除无用的外部 perp/watchdog 守护进程与相关页面开关，采用轻量原生 start-stop-daemon 托管 [2026-10-10]
