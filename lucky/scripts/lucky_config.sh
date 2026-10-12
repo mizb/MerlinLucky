@@ -81,9 +81,10 @@ start_lucky_process(){
 
 	# 1. 提升最大文件句柄限制，保障大流量穿透与反向代理连接不掉线 (杜绝 Too many open files)
 	ulimit -n 65535 2>/dev/null || ulimit -n 4096 2>/dev/null
+	[ $(cat /proc/sys/fs/file-max 2>/dev/null || echo 0) -lt 1048576 ] && sysctl -w fs.file-max=1048576 >/dev/null 2>&1
 
 	# 2. 内存调优参数：限制 Go 运行时内存上限并积极释放物理内存
-	export GOMEMLIMIT=24MiB
+	export GOMEMLIMIT=64MiB
 	export GODEBUG=madvdontneed=1
 
 	start-stop-daemon -S -q -b -m -p /var/run/lucky.pid -x /koolshare/bin/lucky -- -cd /koolshare/configs/lucky/
@@ -184,7 +185,10 @@ close_lucky(){
 }
 
 start_lucky(){
-	# 1. stop first
+	# 1. 日志体检与安全轮转 (严格保护闪存与内存盘空间)
+	[ -f "${LOG_FILE}" ] && [ $(wc -c < "${LOG_FILE}" 2>/dev/null || echo 0) -gt 102400 ] && tail -n 200 "${LOG_FILE}" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "${LOG_FILE}"
+
+	# 2. stop first
 	close_lucky_process
 
 	# 2. 检查版本号
