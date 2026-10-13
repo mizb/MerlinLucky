@@ -1,3 +1,6 @@
+3.2.3
+   - update     从 release.66666.host 自动同步至最新 v3.2.3beta (纯轻量 XiaoJV版, 适配华硕天选AX6000等ARM64机型) [2026-10-13]
+
 3.2.1
    - update     从 release.66666.host 自动同步至最新 v3.2.1beta (纯轻量 XiaoJV版, 适配华硕天选AX6000等ARM64机型) [2026-10-12]
 
