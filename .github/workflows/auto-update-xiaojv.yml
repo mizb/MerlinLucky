@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Check latest XiaoJV Beta on release.66666.host
         id: check_beta
@@ -36,35 +36,77 @@ jobs:
           node -e '
           const fs = require("fs");
 
-          async function main() {
-            console.log("正在连接 release.66666.host 检查版本...");
-            const rootRes = await fetch("https://release.66666.host/");
-            const rootText = await rootRes.text();
+          const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-            let rootDirs = [];
-            if (rootText.trim().startsWith("[")) {
-              rootDirs = JSON.parse(rootText).filter(d => d.is_dir).map(d => ({ href: d.url, text: d.name }));
-            } else {
-              const re = /<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-              let m;
-              while ((m = re.exec(rootText)) !== null) {
-                let href = m[1];
-                let text = m[2].replace(/<[^>]+>/g, "").trim();
-                if (!href.startsWith("?") && !href.startsWith("#") && href !== ".." && text !== "上一层" && text !== "..") {
-                  rootDirs.push({ href, text });
+          async function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+          }
+
+          // 封装带自动重试与超时的 HTTP 请求函数
+          async function fetchWithRetry(url, maxRetries = 3, initialDelay = 3000) {
+            let lastError = null;
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+              try {
+                console.log(`[HTTP GET] (${attempt}/${maxRetries}) 请求: ${url}`);
+                const res = await fetch(url, {
+                  headers: {
+                    "User-Agent": USER_AGENT,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                  },
+                  signal: AbortSignal.timeout(15000)
+                });
+                if (!res.ok) {
+                  throw new Error(`HTTP ${res.status} ${res.statusText}`);
+                }
+                return await res.text();
+              } catch (err) {
+                lastError = err;
+                console.warn(`⚠️ [HTTP GET] (${attempt}/${maxRetries}) 失败 [${url}]: ${err.message}`);
+                if (attempt < maxRetries) {
+                  const delay = initialDelay * attempt;
+                  console.log(`⏳ 等待 ${delay / 1000} 秒后重试...`);
+                  await sleep(delay);
                 }
               }
             }
+            throw new Error(`在重试 ${maxRetries} 次后仍未能获取 [${url}]: ${lastError.message}`);
+          }
+
+          function parseLinks(html) {
+            let list = [];
+            if (html.trim().startsWith("[")) {
+              try {
+                const data = JSON.parse(html);
+                return data.map(d => ({ href: d.url || d.name, text: d.name, is_dir: !!d.is_dir }));
+              } catch (_) {}
+            }
+            const re = /<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+            let m;
+            while ((m = re.exec(html)) !== null) {
+              let href = m[1];
+              let text = m[2].replace(/<[^>]+>/g, "").trim();
+              if (!href.startsWith("?") && !href.startsWith("#") && href !== ".." && text !== "上一层" && text !== "..") {
+                list.push({ href, text });
+              }
+            }
+            return list;
+          }
+
+          function parseVer(v) {
+            const m = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:beta(\d*))?$/i);
+            if (!m) return [0, 0, 0, 0];
+            return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3]), parseInt(m[4] || "0")];
+          }
+
+          // 单次探测逻辑
+          async function runCheckOnce() {
+            console.log("正在连接 release.66666.host 检查版本...");
+            const rootText = await fetchWithRetry("https://release.66666.host/");
+            const rootDirs = parseLinks(rootText);
 
             const betaDirs = rootDirs.filter(d => /v\d+\.\d+\.\d+beta/i.test(d.text));
             if (betaDirs.length === 0) {
               throw new Error("未在服务端找到任何 beta 目录！");
-            }
-
-            function parseVer(v) {
-              const m = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:beta(\d*))?$/i);
-              if (!m) return [0, 0, 0, 0];
-              return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3]), parseInt(m[4] || "0")];
             }
 
             betaDirs.sort((a, b) => {
@@ -85,22 +127,8 @@ jobs:
 
             // 读取子目录
             const betaUrl = new URL(latestBeta.href, "https://release.66666.host/").href;
-            const betaRes = await fetch(betaUrl);
-            const betaText = await betaRes.text();
-            let betaLinks = [];
-            if (betaText.trim().startsWith("[")) {
-              betaLinks = JSON.parse(betaText).map(d => ({ href: d.url, text: d.name }));
-            } else {
-              const re = /<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-              let m;
-              while ((m = re.exec(betaText)) !== null) {
-                let href = m[1];
-                let text = m[2].replace(/<[^>]+>/g, "").trim();
-                if (!href.startsWith("?") && !href.startsWith("#") && href !== ".." && text !== "上一层") {
-                  betaLinks.push({ href, text });
-                }
-              }
-            }
+            const betaText = await fetchWithRetry(betaUrl);
+            const betaLinks = parseLinks(betaText);
 
             // 匹配纯净 xiaojv 目录 (排除 xiaojv_waf)
             const xiaojvDir = betaLinks.find(l => l.text.includes("xiaojv") && !l.text.includes("waf"));
@@ -111,22 +139,8 @@ jobs:
 
             // 获取下载链接
             const dirUrl = new URL(xiaojvDir.href, betaUrl).href;
-            const dirRes = await fetch(dirUrl);
-            const dirText = await dirRes.text();
-            let files = [];
-            if (dirText.trim().startsWith("[")) {
-              files = JSON.parse(dirText).map(d => ({ href: d.url, text: d.name }));
-            } else {
-              const re = /<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-              let m;
-              while ((m = re.exec(dirText)) !== null) {
-                let href = m[1];
-                let text = m[2].replace(/<[^>]+>/g, "").trim();
-                if (!href.startsWith("?") && !href.startsWith("#") && href !== ".." && text !== "上一层") {
-                  files.push({ href, text });
-                }
-              }
-            }
+            const dirText = await fetchWithRetry(dirUrl);
+            const files = parseLinks(dirText);
 
             const arm64Item = files.find(l => l.text.includes("Linux_arm64") && l.text.includes("xiaojv") && !l.text.includes("waf") && l.text.endsWith(".tar.gz"));
             const armv7Item = files.find(l => l.text.includes("Linux_armv7") && l.text.includes("xiaojv") && !l.text.includes("waf") && l.text.endsWith(".tar.gz"));
@@ -135,6 +149,38 @@ jobs:
 
             const arm64Url = new URL(arm64Item.href, dirUrl).href;
             const armv7Url = armv7Item ? new URL(armv7Item.href, dirUrl).href : "";
+
+            return { coreVersion, betaFolder, arm64Url, armv7Url };
+          }
+
+          async function main() {
+            // 外层双重重试保障（防止恰逢作者热更新/上传中导致的文件暂缺）
+            const maxAttempts = 3;
+            let result = null;
+            let lastErr = null;
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              try {
+                if (attempt > 1) {
+                  console.log(`\n🔄 [完整重试 ${attempt}/${maxAttempts}] 重新连接官方源检测...`);
+                }
+                result = await runCheckOnce();
+                break;
+              } catch (err) {
+                lastErr = err;
+                console.warn(`❌ [检测失败 ${attempt}/${maxAttempts}]: ${err.message}`);
+                if (attempt < maxAttempts) {
+                  console.log("⏳ 官方源可能正在上传或网络抖动，等待 10 秒后重新探测...");
+                  await sleep(10000);
+                }
+              }
+            }
+
+            if (!result) {
+              throw new Error(`连续 ${maxAttempts} 次探测均未成功: ${lastErr.message}`);
+            }
+
+            const { coreVersion, betaFolder, arm64Url, armv7Url } = result;
 
             // 读取本地现有版本与构建标识
             let currentVersion = "";
@@ -158,11 +204,13 @@ jobs:
             console.log("是否需要更新:", needUpdate);
 
             const envOut = process.env.GITHUB_OUTPUT;
-            fs.appendFileSync(envOut, "need_update=" + needUpdate + "\n");
-            fs.appendFileSync(envOut, "version=" + coreVersion + "\n");
-            fs.appendFileSync(envOut, "beta_folder=" + betaFolder + "\n");
-            fs.appendFileSync(envOut, "arm64_url=" + arm64Url + "\n");
-            fs.appendFileSync(envOut, "armv7_url=" + armv7Url + "\n");
+            if (envOut) {
+              fs.appendFileSync(envOut, "need_update=" + needUpdate + "\n");
+              fs.appendFileSync(envOut, "version=" + coreVersion + "\n");
+              fs.appendFileSync(envOut, "beta_folder=" + betaFolder + "\n");
+              fs.appendFileSync(envOut, "arm64_url=" + arm64Url + "\n");
+              fs.appendFileSync(envOut, "armv7_url=" + armv7Url + "\n");
+            }
           }
 
           main().catch(err => {
@@ -187,16 +235,16 @@ jobs:
           # 1. 准备临时目录
           mkdir -p lucky/bin tmp_download
 
-          # 2. 下载 arm64 内核 (专用于天选 AX6000 MT7986A 64位)
+          # 2. 下载 arm64 内核 (专用于天选 AX6000 MT7986A 64位)，带 5 次重试机制与连接防抖
           echo "⬇️ 正在下载 ARM64 内核: $ARM64_URL"
-          curl -sSL "$ARM64_URL" -o tmp_download/lucky_arm64.tar.gz
+          curl -sSL --retry 5 --retry-delay 3 --retry-all-errors "$ARM64_URL" -o tmp_download/lucky_arm64.tar.gz
           tar -zxf tmp_download/lucky_arm64.tar.gz -C tmp_download/
           mv tmp_download/lucky tmp_download/lucky_arm64
 
-          # 3. 下载 armv7 内核 (32位兼容)
+          # 3. 下载 armv7 内核 (32位兼容)，带 5 次重试机制与连接防抖
           if [ -n "$ARMV7_URL" ]; then
             echo "⬇️ 正在下载 ARMv7 内核: $ARMV7_URL"
-            curl -sSL "$ARMV7_URL" -o tmp_download/lucky_armv7.tar.gz
+            curl -sSL --retry 5 --retry-delay 3 --retry-all-errors "$ARMV7_URL" -o tmp_download/lucky_armv7.tar.gz
             tar -zxf tmp_download/lucky_armv7.tar.gz -C tmp_download/
             mv tmp_download/lucky tmp_download/lucky_armv7
           fi
