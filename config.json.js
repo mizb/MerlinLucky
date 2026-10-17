@@ -1,11 +1,11 @@
 {
     "author": "vj23456, kiritoknight, mizb",
-    "description": "Lucky v3.2.4beta XiaoJV (纯轻量基础版, 默认ARM64)",
+    "description": "Lucky v3.3.2beta XiaoJV (纯轻量基础版, 默认ARM64)",
     "home_url": "Module_lucky.asp",
     "link": "https://github.com/mizb/MerlinLucky",
-    "md5": "446a23acf600cad7ce60e2b2de1cf453",
+    "md5": "0cfba041112a07359f8c7a4690363687",
     "module": "lucky",
     "tags": "工具",
     "title": "Lucky",
-    "version": "3.2.4"
+    "version": "3.3.2"
 }
