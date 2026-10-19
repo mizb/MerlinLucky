@@ -33,30 +33,59 @@ case "${ARCH}" in
 esac
 echo_date "🖥️ 检测到路由器硬件架构: ${ARCH} (适配包: ${CORE_ARCH})"
 
-# 3. 获取 GitHub Releases 最新版本 (双通道竞速降级)
+# 3. 获取版本信息 (首选自定义或公共加速通道读取 80 字节 version.json，0 频控毫秒级响应)
 echo_date "🔍 正在获取最新发布版本..."
-API_URL="https://api.github.com/repos/mizb/MerlinLucky/releases/latest"
-LATEST_TAG=$(curl -kfsSL --connect-timeout 6 -m 10 "${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-if [ -z "${LATEST_TAG}" ]; then
-    LATEST_TAG=$(curl -kfsSL --connect-timeout 6 -m 10 "https://ghproxy.net/${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+JSON_URL="https://raw.githubusercontent.com/mizb/MerlinLucky/main/version.json"
+
+CUSTOM_MIRROR="${CUSTOM_MIRROR:-$(dbus get lucky_custom_mirror 2>/dev/null)}"
+CUSTOM_MIRROR="${CUSTOM_MIRROR%/}"
+[ -n "${CUSTOM_MIRROR}" ] && dbus set lucky_custom_mirror="${CUSTOM_MIRROR}"
+
+RET=""
+if [ -n "${CUSTOM_MIRROR}" ]; then
+    RET=$(curl -kfsSL --connect-timeout 4 -m 6 "${CUSTOM_MIRROR}/${JSON_URL}" 2>/dev/null)
+fi
+[ -z "${RET}" ] && RET=$(curl -kfsSL --connect-timeout 4 -m 6 "https://ghproxy.net/${JSON_URL}" 2>/dev/null)
+[ -z "${RET}" ] && RET=$(curl -kfsSL --connect-timeout 4 -m 6 "${JSON_URL}" 2>/dev/null)
+
+LATEST_VER=$(echo "$RET" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+
+if [ -z "${LATEST_VER}" ]; then
+    API_URL="https://api.github.com/repos/mizb/MerlinLucky/releases/latest"
+    if [ -n "${CUSTOM_MIRROR}" ]; then
+        LATEST_TAG=$(curl -kfsSL --connect-timeout 5 -m 8 "${CUSTOM_MIRROR}/${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    fi
+    [ -z "${LATEST_TAG}" ] && LATEST_TAG=$(curl -kfsSL --connect-timeout 5 -m 8 "https://ghproxy.net/${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    [ -z "${LATEST_TAG}" ] && LATEST_TAG=$(curl -kfsSL --connect-timeout 5 -m 8 "${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    LATEST_VER="${LATEST_TAG#v}"
 fi
 
-if [ -z "${LATEST_TAG}" ]; then
+if [ -z "${LATEST_VER}" ]; then
     echo_date "❌ 获取最新版本信息失败，请检查路由器网络连接！"
     exit 1
 fi
 
+LATEST_VER="${LATEST_VER#v}"
+LATEST_TAG="v${LATEST_VER}"
 echo_date "📌 线上最新版本: ${LATEST_TAG}"
 
 # 4. 下载匹配包至临时沙盒
 PKG_NAME="MerlinLucky_${LATEST_TAG}_${CORE_ARCH}.tar.gz"
-DL_URL="https://github.com/mizb/MerlinLucky/releases/download/${LATEST_TAG}/${PKG_NAME}"
+RAW_DL_URL="https://github.com/mizb/MerlinLucky/releases/download/${LATEST_TAG}/${PKG_NAME}"
 TMP_DIR="/tmp/merlin_lucky_online_install"
 rm -rf "${TMP_DIR}" && mkdir -p "${TMP_DIR}"
 
 echo_date "⬇️ 正在下载: ${PKG_NAME} ..."
-curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/lucky.tar.gz" "${DL_URL}" || \
-curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/lucky.tar.gz" "https://ghproxy.net/${DL_URL}"
+DL_OK=0
+if [ -n "${CUSTOM_MIRROR}" ]; then
+    curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/lucky.tar.gz" "${CUSTOM_MIRROR}/${RAW_DL_URL}" && [ -s "${TMP_DIR}/lucky.tar.gz" ] && DL_OK=1
+fi
+if [ "${DL_OK}" -eq 0 ]; then
+    curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/lucky.tar.gz" "https://ghproxy.net/${RAW_DL_URL}" && [ -s "${TMP_DIR}/lucky.tar.gz" ] && DL_OK=1
+fi
+if [ "${DL_OK}" -eq 0 ]; then
+    curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/lucky.tar.gz" "${RAW_DL_URL}" && [ -s "${TMP_DIR}/lucky.tar.gz" ] && DL_OK=1
+fi
 
 if [ ! -s "${TMP_DIR}/lucky.tar.gz" ]; then
     echo_date "❌ 安装包下载失败或文件损坏！"

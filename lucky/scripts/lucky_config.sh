@@ -167,10 +167,34 @@ reset_param() {
 
 # ==================== 方案 B: 安全在线更新核心逻辑 ====================
 fetch_latest_ver(){
-	local API_URL="https://api.github.com/repos/mizb/MerlinLucky/releases/latest"
-	local VER=$(curl -kfsSL --connect-timeout 6 -m 10 "${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+	local VER=""
+	local JSON_URL="https://raw.githubusercontent.com/mizb/MerlinLucky/main/version.json"
+	local CUSTOM_MIRROR=$(dbus get lucky_custom_mirror 2>/dev/null)
+	CUSTOM_MIRROR="${CUSTOM_MIRROR%/}"
+
+	local RET=""
+	# 1. 若配置了自定义加速镜像（保存在路由器本地 dbus，无需上传 GitHub），最高优先级使用
+	if [ -n "${CUSTOM_MIRROR}" ]; then
+		RET=$(curl -kfsSL --connect-timeout 4 -m 6 "${CUSTOM_MIRROR}/${JSON_URL}" 2>/dev/null)
+	fi
+
+	# 2. 默认公共加速通道 (ghproxy.net)
+	[ -z "${RET}" ] && RET=$(curl -kfsSL --connect-timeout 4 -m 6 "https://ghproxy.net/${JSON_URL}" 2>/dev/null)
+	
+	# 3. 官方直连兜底
+	[ -z "${RET}" ] && RET=$(curl -kfsSL --connect-timeout 4 -m 6 "${JSON_URL}" 2>/dev/null)
+
+	VER=$(echo "$RET" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+
+	# 4. 容灾回退：若静态文件异常则调用 GitHub API
 	if [ -z "${VER}" ]; then
-		VER=$(curl -kfsSL --connect-timeout 6 -m 10 "https://ghproxy.net/${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+		local API_URL="https://api.github.com/repos/mizb/MerlinLucky/releases/latest"
+		if [ -n "${CUSTOM_MIRROR}" ]; then
+			VER=$(curl -kfsSL --connect-timeout 5 -m 8 "${CUSTOM_MIRROR}/${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+		fi
+		[ -z "${VER}" ] && VER=$(curl -kfsSL --connect-timeout 5 -m 8 "https://ghproxy.net/${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+		[ -z "${VER}" ] && VER=$(curl -kfsSL --connect-timeout 5 -m 8 "${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+		VER="${VER#v}"
 	fi
 	echo "${VER}"
 }
@@ -184,6 +208,7 @@ check_update(){
 	fi
 	local LATEST_NUM="${LATEST#v}"
 	local CURRENT_NUM=$(cat /koolshare/lucky/version 2>/dev/null || dbus get lucky_version)
+	CURRENT_NUM="${CURRENT_NUM#v}"
 	dbus set lucky_latest_version="${LATEST_NUM}"
 	echo_date "✅ 检测完成！本地版本: v${CURRENT_NUM:-未知}，线上最新: v${LATEST_NUM}"
 }
@@ -207,19 +232,32 @@ update_core(){
 
 	local LATEST_NUM="${LATEST#v}"
 	local CURRENT_NUM=$(cat /koolshare/lucky/version 2>/dev/null || dbus get lucky_version)
+	CURRENT_NUM="${CURRENT_NUM#v}"
 	if [ "${LATEST_NUM}" == "${CURRENT_NUM}" ] && [ "$1" != "force" ]; then
 		echo_date "✅ 当前内核已是最新版 (v${CURRENT_NUM})，无需更新。"
 		return 0
 	fi
 
-	local PKG_NAME="MerlinLucky_${LATEST}_${CORE_ARCH}.tar.gz"
-	local DL_URL="https://github.com/mizb/MerlinLucky/releases/download/${LATEST}/${PKG_NAME}"
+	local TAG="v${LATEST_NUM}"
+	local PKG_NAME="MerlinLucky_${TAG}_${CORE_ARCH}.tar.gz"
+	local RAW_DL_URL="https://github.com/mizb/MerlinLucky/releases/download/${TAG}/${PKG_NAME}"
 	local TMP_DIR="/tmp/lucky_update_sandbox"
 	rm -rf "${TMP_DIR}" && mkdir -p "${TMP_DIR}"
 
+	local CUSTOM_MIRROR=$(dbus get lucky_custom_mirror 2>/dev/null)
+	CUSTOM_MIRROR="${CUSTOM_MIRROR%/}"
+
 	echo_date "⬇️ 正在下载纯净轻量 XiaoJV 安装包 (${PKG_NAME})..."
-	curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/pkg.tar.gz" "${DL_URL}" || \
-	curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/pkg.tar.gz" "https://ghproxy.net/${DL_URL}"
+	local DL_OK=0
+	if [ -n "${CUSTOM_MIRROR}" ]; then
+		curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/pkg.tar.gz" "${CUSTOM_MIRROR}/${RAW_DL_URL}" && [ -s "${TMP_DIR}/pkg.tar.gz" ] && DL_OK=1
+	fi
+	if [ "${DL_OK}" -eq 0 ]; then
+		curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/pkg.tar.gz" "https://ghproxy.net/${RAW_DL_URL}" && [ -s "${TMP_DIR}/pkg.tar.gz" ] && DL_OK=1
+	fi
+	if [ "${DL_OK}" -eq 0 ]; then
+		curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/pkg.tar.gz" "${RAW_DL_URL}" && [ -s "${TMP_DIR}/pkg.tar.gz" ] && DL_OK=1
+	fi
 
 	if [ ! -s "${TMP_DIR}/pkg.tar.gz" ]; then
 		echo_date "❌ 安装包下载失败或文件为空！已放弃更新。"

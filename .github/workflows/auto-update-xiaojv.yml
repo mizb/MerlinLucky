@@ -295,12 +295,14 @@ jobs:
             conf.link = 'https://github.com/mizb/MerlinLucky';
             conf.author = 'vj23456, kiritoknight, mizb';
             fs.writeFileSync('config.json.js', JSON.stringify(conf, null, 4), 'utf8');
+            const vData = { version: '${VERSION}', md5: '${MD5_ARM64}', date: '${DATE_NOW}' };
+            fs.writeFileSync('version.json', JSON.stringify(vData, null, 2), 'utf8');
           "
 
           # 8. 提交修改并推送到仓库
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add lucky/ config.json.js Changelog.txt
+          git add lucky/ config.json.js version.json Changelog.txt
 
           if ! git diff --cached --quiet; then
             git commit -m "chore: auto update Lucky to v${VERSION} (${BETA_FOLDER} xiaojv)"

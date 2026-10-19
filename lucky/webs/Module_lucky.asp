@@ -133,7 +133,7 @@ var _responseLen;
 var STATUS_FLAG;
 var noChange = 0;
 var params_check = ['lucky_reset_safeurl','lucky_reset_user','lucky_reset_port','lucky_reset_disable','lucky_autoupdate'];
-var params_input = ['lucky_port','lucky_safeurl'];
+var params_input = ['lucky_port','lucky_safeurl','lucky_custom_mirror'];
 
 String.prototype.myReplace = function(f, e){
 	var reg = new RegExp(f, "g"); 
@@ -312,8 +312,9 @@ function save(flag){
 }
 
 function check_update_btn() {
+	var custom_mirror = E("lucky_custom_mirror") ? E("lucky_custom_mirror").value.trim() : "";
 	var id = parseInt(Math.random() * 100000000);
-	var postData = {"id": id, "method": "lucky_config.sh", "params": ["check_update"], "fields": ""};
+	var postData = {"id": id, "method": "lucky_config.sh", "params": ["check_update"], "fields": {"lucky_custom_mirror": custom_mirror}};
 	E("loading_block_title").innerHTML = "正在检查最新版本...";
 	showALLoadingBar();
 	$.ajax({
@@ -338,8 +339,9 @@ function check_update_btn() {
 
 function do_update_btn() {
 	if (!confirm("确定要立即在线升级 Lucky 内核吗？\n升级过程将保留您所有的规则、证书与配置！")) return;
+	var custom_mirror = E("lucky_custom_mirror") ? E("lucky_custom_mirror").value.trim() : "";
 	var id = parseInt(Math.random() * 100000000);
-	var postData = {"id": id, "method": "lucky_config.sh", "params": ["update_core"], "fields": ""};
+	var postData = {"id": id, "method": "lucky_config.sh", "params": ["update_core"], "fields": {"lucky_custom_mirror": custom_mirror}};
 	E("loading_block_title").innerHTML = "正在升级 Lucky 内核...";
 	showALLoadingBar();
 	$.ajax({
@@ -568,6 +570,10 @@ function validateInput(input, minValue, maxValue) {
 														<div style="margin-top: 8px; color: #bbb;">
 															<input type="checkbox" id="lucky_autoupdate" style="vertical-align:middle;">
 															<label for="lucky_autoupdate" style="vertical-align:middle; cursor:pointer;">每天凌晨 04:30 自动巡检并静默升级内核</label>
+														</div>
+														<div style="margin-top: 8px; color: #bbb;">
+															<span>下载加速镜像：</span>
+															<input type="text" id="lucky_custom_mirror" name="lucky_custom_mirror" class="input_20_table" style="width:240px; vertical-align:middle;" placeholder="留空使用默认公共加速通道">
 														</div>
 													</td>
 												</tr>
