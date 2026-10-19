@@ -3,7 +3,7 @@
     "description": "Lucky v3.3.3beta XiaoJV (纯轻量基础版, 默认ARM64)",
     "home_url": "Module_lucky.asp",
     "link": "https://github.com/mizb/MerlinLucky",
-    "md5": "88527b7ed1f1736dd7ca73403602629b",
+    "md5": "84e479efa9e7b3df30dd93f036a6793c",
     "module": "lucky",
     "tags": "工具",
     "title": "Lucky",
