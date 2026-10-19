@@ -339,9 +339,7 @@ start_lucky(){
 	[ -f "${LOG_FILE}" ] && [ $(wc -c < "${LOG_FILE}" 2>/dev/null || echo 0) -gt 102400 ] && tail -n 200 "${LOG_FILE}" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "${LOG_FILE}"
 	close_lucky_process
 	read_version
-	sleep 1
 	read_base_info
-	sleep 1
 	start_lucky_process
 	manage_autoupdate_cron
 }

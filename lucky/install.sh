@@ -68,18 +68,16 @@ set_skin(){
 }
 
 exit_install(){
-	local state=$1
+	local state=${1:-0}
 	case $state in
 		1)
 			echo_date "本插件适用于【koolshare 梅林改/官改 hnd/axhnd/axhnd.675x】固件平台！"
 			echo_date "你的固件平台不能安装！！!"
 			echo_date "本插件支持机型/平台：https://github.com/koolshare/rogsoft#rogsoft"
 			echo_date "退出安装！"
-			rm -rf /tmp/lucky* >/dev/null 2>&1
 			exit 1
 			;;
 		0|*)
-			rm -rf /tmp/lucky* >/dev/null 2>&1
 			exit 0
 			;;
 	esac
@@ -97,7 +95,7 @@ install_now() {
 	# default value
 	local TITLE="Lucky"
 	local DESCR="端口转发/DDNS/Web服务/Stun内网穿透/网络唤醒/计划任务/ACME自动证书/网络存储"
-	local PLVER=$(cat ${DIR}/version)
+	local PLVER=$(cat ${DIR}/version 2>/dev/null || echo "3.3.3")
 
 	# stop lucky
 	local lucky_enable=$(dbus get lucky_enable)
@@ -105,7 +103,7 @@ install_now() {
 	local lucky_install=$(dbus get softcenter_module_lucky_install)
 	if [ "$lucky_enable" == "1" -o -n "${lucky_process}" ];then
 		echo_date "先关闭Lucky插件！以保证更新成功！"
-		sh /koolshare/scripts/lucky_config.sh stop
+		sh /koolshare/scripts/lucky_config.sh stop >/dev/null 2>&1
 	fi
 
 	# create lucky config dirctory
@@ -121,14 +119,14 @@ install_now() {
 
 	# install file
 	echo_date "安装插件相关文件..."
-	cp -rf /tmp/${module}/bin/lucky /koolshare/bin/
+	cp -rf "${DIR}/bin/lucky" /koolshare/bin/
 	if [ "$lucky_install" != "1" ];then
-		cp -rf /tmp/${module}/bin/lucky_base.lkcf /koolshare/configs/lucky/
+		cp -rf "${DIR}/bin/lucky_base.lkcf" /koolshare/configs/lucky/
 	fi
-	cp -rf /tmp/${module}/res/* /koolshare/res/
-	cp -rf /tmp/${module}/scripts/* /koolshare/scripts/
-	cp -rf /tmp/${module}/webs/* /koolshare/webs/
-	cp -rf /tmp/${module}/uninstall.sh /koolshare/scripts/uninstall_${module}.sh
+	cp -rf "${DIR}/res/"* /koolshare/res/
+	cp -rf "${DIR}/scripts/"* /koolshare/scripts/
+	cp -rf "${DIR}/webs/"* /koolshare/webs/
+	cp -rf "${DIR}/uninstall.sh" /koolshare/scripts/uninstall_${module}.sh
 	
 	#创建开机自启任务
 	[ ! -L "/koolshare/init.d/S110lucky.sh" ] && ln -sf /koolshare/scripts/lucky_config.sh /koolshare/init.d/S110lucky.sh
@@ -164,12 +162,12 @@ install_now() {
 	# re_enable
 	if [ "${lucky_enable}" == "1" ];then
 		echo_date "重新启动Lucky插件！"
-		sh /koolshare/scripts/lucky_config.sh boot_up
+		sh /koolshare/scripts/lucky_config.sh boot_up >/dev/null 2>&1 &
 	fi
 
 	# finish
 	echo_date "${TITLE}插件安装完毕！"
-	exit_install
+	exit_install 0
 }
 
 install() {
