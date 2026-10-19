@@ -42,9 +42,20 @@ platform_test(){
 	local LINUX_VER=$(uname -r|awk -F"." '{print $1$2}')
 	local ARCH=$(uname -m)
 	if [ -d "/koolshare" -a -f "/usr/bin/skipd" -a "${LINUX_VER}" -ge "41" ];then
-		echo_date 机型："${MODEL} ${FW_TYPE_NAME} 符合安装要求，开始安装插件！"
+		echo_date 机型："${MODEL} ${FW_TYPE_NAME} 符合安装要求！"
 	else
 		exit_install 1
+	fi
+
+	# 硬件架构与二进制兼容性预检 (沙盒试运行，杜绝装错架构)
+	if [ -f "/tmp/${module}/bin/lucky" ]; then
+		chmod +x "/tmp/${module}/bin/lucky" 2>/dev/null
+		local CHECK_BIN=$("/tmp/${module}/bin/lucky" -info 2>/dev/null || echo "")
+		if [ -z "${CHECK_BIN}" ]; then
+			echo_date "❌ 错误：安装包内的 Lucky 内核与当前路由器 CPU 架构 (${ARCH}) 不兼容！"
+			echo_date "请前往 https://github.com/mizb/MerlinLucky 下载与您机型架构匹配的安装包（ARM64 / ARMv7）。"
+			exit_install 1
+		fi
 	fi
 }
 
@@ -158,6 +169,8 @@ install_now() {
 	dbus_nset lucky_reset_safeurl "0"
 	dbus_nset lucky_reset_user "0"
 	dbus_nset lucky_safeurl "0"
+	dbus_nset lucky_autoupdate "0"
+	dbus_nset lucky_latest_version "${PLVER}"
 
 	# re_enable
 	if [ "${lucky_enable}" == "1" ];then

@@ -6,13 +6,14 @@ alias echo_date='echo 【$(TZ=UTC-8 date -R +%Y年%m月%d日\ %X)】:'
 LOG_FILE=/tmp/upload/lucky_log.txt
 LUCKY_LOG_FILE=/tmp/upload/lucky.log
 LOCK_FILE=/var/lock/lucky.lock
+LUCKY_BIN=/koolshare/bin/lucky
+CONFIG_DIR=/koolshare/configs/lucky
 BASH=${0##*/}
 ARGS=$@
 
 set_lock(){
 	exec 999>${LOCK_FILE}
 	flock -n 999 || {
-		# bring back to original log
 		http_response "$ACTION"
 		exit 1
 	}
@@ -35,7 +36,7 @@ number_test(){
 }
 
 detect_running_status(){
-	local BINNAME=$1
+	local BINNAME=lucky
 	local PID
 	local i=40
 	until [ -n "${PID}" ]; do
@@ -43,7 +44,7 @@ detect_running_status(){
 		i=$(($i - 1))
 		PID=$(pidof ${BINNAME})
 		if [ "$i" -lt 1 ]; then
-			echo_date "🔴$1进程启动失败，请检查你的配置！"
+			echo_date "🔴Lucky 进程启动失败，请检查你的配置！"
 			return
 		fi
 	done
@@ -87,38 +88,37 @@ start_lucky_process(){
 	export GOMEMLIMIT=64MiB
 	export GODEBUG=madvdontneed=1
 
-	start-stop-daemon -S -q -b -m -p /var/run/lucky.pid -x /koolshare/bin/lucky -- -cd /koolshare/configs/lucky/
+	start-stop-daemon -S -q -b -m -p /var/run/lucky.pid -x ${LUCKY_BIN} -- -cd ${CONFIG_DIR}/
 	sleep 1
-	detect_running_status lucky
+	detect_running_status
 }
 
 read_version() {
-	# 获取lucky info
-	info=$(lucky -info)
-
-	# 解析版本号
-	version=$(echo $info | grep -o '"Version":"[^"]*"' | sed 's/"Version":"\([^"]*\)"/\1/')
+	if [ ! -x "${LUCKY_BIN}" ]; then
+		echo_date "❌未找到可执行文件 ${LUCKY_BIN}"
+		return 1
+	fi
+	local info=$(${LUCKY_BIN} -info 2>/dev/null)
+	local version=$(echo "$info" | grep -o '"Version":"[^"]*"' | sed 's/"Version":"\([^"]*\)"/\1/')
 	
-	# 检查是否成功提取版本号
 	if [ -z "$version" ]; then
-		echo_date "❌获取Lucky内核版本号，请稍后重试."
+		echo_date "❌获取Lucky内核版本号失败，请稍后重试."
 		return 1
 	else
 		echo_date "🍭Lucky内核版本号为：$version"
 		dbus set lucky_binary="$version"
+		dbus set lucky_version="$version"
 	fi
 }
 
 read_base_info() {
-	# 获取lucky baseinfo
-	baseConfInfo=$(lucky -cd /koolshare/configs/lucky -baseConfInfo)
+	if [ ! -x "${LUCKY_BIN}" ]; then
+		return 1
+	fi
+	local baseConfInfo=$(${LUCKY_BIN} -cd ${CONFIG_DIR} -baseConfInfo 2>/dev/null)
+	local lucky_port=$(echo "$baseConfInfo" | grep -o '"AdminWebListenPort":[0-9]*' | sed 's/"AdminWebListenPort"://')
+	local lucky_safeurl=$(echo "$baseConfInfo" | grep -o '"SafeURL":"[^"]*"' | sed 's/"SafeURL":"\([^"]*\)"/\1/')
 
-	# 解析端口号
-	lucky_port=$(echo "$baseConfInfo" | grep -o '"AdminWebListenPort":[0-9]*' | sed 's/"AdminWebListenPort"://')
-	# 解析安全路径
-	lucky_safeurl=$(echo "$baseConfInfo" | grep -o '"SafeURL":"[^"]*"' | sed 's/"SafeURL":"\([^"]*\)"/\1/')
-
-	# 检查是否成功提取端口号
 	if [ -z "$lucky_port" ]; then
 		echo "❌获取Lucky端口失败，请稍后重试."
 		return 1
@@ -130,12 +130,9 @@ read_base_info() {
 }
 
 reset_param() {
-	# 检查进程是否存在
 	if pidof lucky > /dev/null; then
-		# 初始化命令
-		command="lucky -cd /koolshare/configs/lucky"
+		local command="${LUCKY_BIN} -cd ${CONFIG_DIR}"
 
-		# 根据 dbus 参数值拼接命令选项
 		if [ "${lucky_reset_safeurl}" -eq 1 ]; then
 			command="$command -rCancelSafeURL"
 			echo_date "🔸取消安全入口"
@@ -156,51 +153,161 @@ reset_param() {
 			echo_date "🔸禁用2FA验证"
 		fi
 
-		# 执行命令
-		if [ "$command" != "lucky" ]; then
+		if [ "$command" != "${LUCKY_BIN} -cd ${CONFIG_DIR}" ]; then
 			echo_date "执行命令: $command"
 			eval $command
 		fi
 		echo_date "✅Lucky 重置成功."
-		dbus set lucky_reset_safeurl="0"
-		dbus set lucky_reset_user="0"
-		dbus set lucky_reset_port="0"
-		dbus set lucky_reset_disable="0"
 	else
-		echo_date "⛔️Lucky 进程未运行，请重启后再试."
-		dbus set lucky_reset_safeurl="0"
-		dbus set lucky_reset_user="0"
-		dbus set lucky_reset_port="0"
-		dbus set lucky_reset_disable="0"
+		echo_date "⛔️Lucky 进程未运行，请启动后再试."
+	fi
+	dbus set lucky_reset_safeurl="0"
+	dbus set lucky_reset_user="0"
+	dbus set lucky_reset_port="0"
+	dbus set lucky_reset_disable="0"
+}
+
+# ==================== 方案 B: 安全在线更新核心逻辑 ====================
+fetch_latest_ver(){
+	local API_URL="https://api.github.com/repos/mizb/MerlinLucky/releases/latest"
+	local VER=$(curl -kfsSL --connect-timeout 6 -m 10 "${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+	if [ -z "${VER}" ]; then
+		VER=$(curl -kfsSL --connect-timeout 6 -m 10 "https://ghproxy.net/${API_URL}" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+	fi
+	echo "${VER}"
+}
+
+check_update(){
+	echo_date "🔍 正在连接检测最新版本..."
+	local LATEST=$(fetch_latest_ver)
+	if [ -z "${LATEST}" ]; then
+		echo_date "❌ 检查更新失败：网络连接超时或无法解析 GitHub API！"
+		return 1
+	fi
+	local LATEST_NUM="${LATEST#v}"
+	local CURRENT_NUM=$(cat /koolshare/lucky/version 2>/dev/null || dbus get lucky_version)
+	dbus set lucky_latest_version="${LATEST_NUM}"
+	echo_date "✅ 检测完成！本地版本: v${CURRENT_NUM:-未知}，线上最新: v${LATEST_NUM}"
+}
+
+update_core(){
+	echo_date "🚀 开始执行安全热更新..."
+	local ARCH=$(uname -m)
+	local CORE_ARCH=""
+	case "${ARCH}" in
+		aarch64|arm64) CORE_ARCH="arm64" ;;
+		armv7l|armv7)  CORE_ARCH="armv7" ;;
+		*)
+			echo_date "❌ 探测到不受支持的架构: ${ARCH}，拒绝更新！"
+			return 1
+			;;
+	esac
+	echo_date "🖥️ 硬件架构校验锁定: ${ARCH} -> 匹配包: ${CORE_ARCH}"
+
+	local LATEST=$(fetch_latest_ver)
+	[ -z "${LATEST}" ] && echo_date "❌ 获取最新版本信息失败，更新中止！" && return 1
+
+	local LATEST_NUM="${LATEST#v}"
+	local CURRENT_NUM=$(cat /koolshare/lucky/version 2>/dev/null || dbus get lucky_version)
+	if [ "${LATEST_NUM}" == "${CURRENT_NUM}" ] && [ "$1" != "force" ]; then
+		echo_date "✅ 当前内核已是最新版 (v${CURRENT_NUM})，无需更新。"
+		return 0
+	fi
+
+	local PKG_NAME="MerlinLucky_${LATEST}_${CORE_ARCH}.tar.gz"
+	local DL_URL="https://github.com/mizb/MerlinLucky/releases/download/${LATEST}/${PKG_NAME}"
+	local TMP_DIR="/tmp/lucky_update_sandbox"
+	rm -rf "${TMP_DIR}" && mkdir -p "${TMP_DIR}"
+
+	echo_date "⬇️ 正在下载纯净轻量 XiaoJV 安装包 (${PKG_NAME})..."
+	curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/pkg.tar.gz" "${DL_URL}" || \
+	curl -kfsSL --connect-timeout 8 -m 90 -o "${TMP_DIR}/pkg.tar.gz" "https://ghproxy.net/${DL_URL}"
+
+	if [ ! -s "${TMP_DIR}/pkg.tar.gz" ]; then
+		echo_date "❌ 安装包下载失败或文件为空！已放弃更新。"
+		rm -rf "${TMP_DIR}"
+		return 1
+	fi
+
+	echo_date "📦 正在解压并进行【沙盒预执行校验】..."
+	tar -zxf "${TMP_DIR}/pkg.tar.gz" -C "${TMP_DIR}/"
+	local TEST_BIN="${TMP_DIR}/lucky/bin/lucky"
+	if [ ! -f "${TEST_BIN}" ]; then
+		echo_date "❌ 压缩包内未包含 lucky 执行文件，包体异常！"
+		rm -rf "${TMP_DIR}"
+		return 1
+	fi
+
+	chmod +x "${TEST_BIN}"
+	local PROBE_TEST=$("${TEST_BIN}" -info 2>/dev/null || echo "")
+	if [ -z "${PROBE_TEST}" ]; then
+		echo_date "❌ 致命错误：新内核在当前路由器无法运行（架构不匹配或下载损坏）！"
+		echo_date "🛡️ 熔断机制触发：立即放弃更新，原有系统完好无损！"
+		rm -rf "${TMP_DIR}"
+		return 1
+	fi
+	echo_date "🟢 沙盒预执行测试通过！架构完全兼容！"
+
+	# 备份当前内核
+	cp -f ${LUCKY_BIN} ${LUCKY_BIN}.bak 2>/dev/null
+
+	echo_date "⏸️ 临时停止当前 Lucky 进程..."
+	close_lucky_process
+
+	echo_date "🔄 正在原子替换核心组件与管理脚本..."
+	cp -f "${TEST_BIN}" ${LUCKY_BIN}
+	chmod +x ${LUCKY_BIN}
+	[ -d "${TMP_DIR}/lucky/scripts" ] && cp -rf "${TMP_DIR}/lucky/scripts/"* /koolshare/scripts/ 2>/dev/null
+	[ -d "${TMP_DIR}/lucky/webs" ] && cp -rf "${TMP_DIR}/lucky/webs/"* /koolshare/webs/ 2>/dev/null
+	chmod +x /koolshare/scripts/lucky*.sh 2>/dev/null
+
+	echo "${LATEST_NUM}" > /koolshare/lucky/version
+	dbus set lucky_version="${LATEST_NUM}"
+	dbus set lucky_binary="${LATEST_NUM}"
+	dbus set softcenter_module_lucky_version="${LATEST_NUM}"
+
+	echo_date "🚀 启动新版本..."
+	start_lucky_process
+
+	sleep 2
+	if pidof lucky >/dev/null; then
+		echo_date "🎉 Lucky 已成功平滑升级至 v${LATEST_NUM}！配置与证书完整保留。"
+		rm -rf "${TMP_DIR}" ${LUCKY_BIN}.bak
+	else
+		echo_date "⚠️ 警告：新内核启动异常！正在自动秒级回滚..."
+		cp -f ${LUCKY_BIN}.bak ${LUCKY_BIN}
+		start_lucky_process
+		echo_date "🛡️ 已回滚至原版本！"
+		rm -rf "${TMP_DIR}"
+		return 1
+	fi
+}
+
+manage_autoupdate_cron(){
+	if [ "${lucky_autoupdate}" == "1" ]; then
+		cru a lucky_auto_update "30 4 * * * /koolshare/scripts/lucky_config.sh auto_update >/dev/null 2>&1"
+		echo_date "⏰ 已开启每天凌晨 04:30 自动巡检更新任务"
+	else
+		cru d lucky_auto_update 2>/dev/null
+		echo_date "⏰ 已关闭定时自动巡检更新任务"
 	fi
 }
 
 close_lucky(){
-	# 1. remove and limit log
 	rm -rf ${LUCKY_LOG_FILE}
 	[ -f "${LOG_FILE}" ] && [ $(wc -c < "${LOG_FILE}" 2>/dev/null || echo 0) -gt 102400 ] && tail -n 200 "${LOG_FILE}" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "${LOG_FILE}"
-
-	# 2. stop 
 	close_lucky_process
 }
 
 start_lucky(){
-	# 1. 日志体检与安全轮转 (严格保护闪存与内存盘空间)
 	[ -f "${LOG_FILE}" ] && [ $(wc -c < "${LOG_FILE}" 2>/dev/null || echo 0) -gt 102400 ] && tail -n 200 "${LOG_FILE}" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "${LOG_FILE}"
-
-	# 2. stop first
 	close_lucky_process
-
-	# 2. 检查版本号
 	read_version
 	sleep 1
-
-	# 3. 读取端口
 	read_base_info
 	sleep 1
-
-	# 4. start process
 	start_lucky_process
+	manage_autoupdate_cron
 }
 
 case $1 in
@@ -220,11 +327,14 @@ boot_up)
 start_nat)
 	if [ "${lucky_enable}" == "1" ]; then
 		logger "[软件中心]-[${0##*/}]: NAT重启触发重新启动Lucky！"
-		lucky -cd /koolshare/configs/lucky -rRestart
+		${LUCKY_BIN} -cd ${CONFIG_DIR} -rRestart
 	fi
 	;;	
 stop)
 	close_lucky
+	;;
+auto_update)
+	update_core >> /tmp/upload/lucky_autoupdate.log 2>&1
 	;;
 esac
 
@@ -248,6 +358,23 @@ web_submit)
 		echo_date "ℹ️停止Lucky！" | tee -a ${LOG_FILE}
 		close_lucky | tee -a ${LOG_FILE}
 	fi
+	manage_autoupdate_cron | tee -a ${LOG_FILE}
+	echo DD01N05S | tee -a ${LOG_FILE}
+	unset_lock
+	;;
+check_update)
+	set_lock
+	true > ${LOG_FILE}
+	http_response "$1"
+	check_update | tee -a ${LOG_FILE}
+	echo DD01N05S | tee -a ${LOG_FILE}
+	unset_lock
+	;;
+update_core)
+	set_lock
+	true > ${LOG_FILE}
+	http_response "$1"
+	update_core "force" | tee -a ${LOG_FILE}
 	echo DD01N05S | tee -a ${LOG_FILE}
 	unset_lock
 	;;

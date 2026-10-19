@@ -95,7 +95,8 @@ jobs:
           function parseVer(v) {
             const m = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:beta(\d*))?$/i);
             if (!m) return [0, 0, 0, 0];
-            return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3]), parseInt(m[4] || "0")];
+            const betaWeight = (m[4] !== undefined) ? parseInt(m[4] || "0", 10) : 999999;
+            return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), betaWeight];
           }
 
           // 单次探测逻辑
@@ -104,9 +105,9 @@ jobs:
             const rootText = await fetchWithRetry("https://release.66666.host/");
             const rootDirs = parseLinks(rootText);
 
-            const betaDirs = rootDirs.filter(d => /v\d+\.\d+\.\d+beta/i.test(d.text));
+            const betaDirs = rootDirs.filter(d => /^v\d+\.\d+\.\d+(?:beta\d*)?$/i.test(d.text));
             if (betaDirs.length === 0) {
-              throw new Error("未在服务端找到任何 beta 目录！");
+              throw new Error("未在服务端找到任何可用版本目录！");
             }
 
             betaDirs.sort((a, b) => {

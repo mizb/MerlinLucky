@@ -132,7 +132,7 @@ var count_down;
 var _responseLen;
 var STATUS_FLAG;
 var noChange = 0;
-var params_check = ['lucky_reset_safeurl','lucky_reset_user','lucky_reset_port','lucky_reset_disable'];
+var params_check = ['lucky_reset_safeurl','lucky_reset_user','lucky_reset_port','lucky_reset_disable','lucky_autoupdate'];
 var params_input = ['lucky_port','lucky_safeurl'];
 
 String.prototype.myReplace = function(f, e){
@@ -206,10 +206,18 @@ function conf2obj(){
 	}
 	if (dbus["lucky_binary"]){
 		E("lucky_binary").innerHTML = dbus["lucky_binary"];
+		E("curr_ver").innerHTML = "v" + dbus["lucky_binary"];
+	}
+	if (dbus["lucky_latest_version"]){
+		E("latest_ver").innerHTML = "v" + dbus["lucky_latest_version"];
+		if (dbus["lucky_latest_version"] != dbus["lucky_binary"] && dbus["lucky_latest_version"] != dbus["lucky_version"]) {
+			E("btn_do_update").style.display = "";
+		}
 	}
 }
 
 function show_hide_element(){
+	E("ly_update").style.display = "";
 	if(dbus["lucky_enable"] == "1"){
 		E("ly_status").style.display = "";
 		E("ly_binary").style.display = "";
@@ -220,7 +228,7 @@ function show_hide_element(){
 		E("ly_reset").style.display = "";
 	}else{
 		E("ly_status").style.display = "";
-		E("ly_binary").style.display = "none";
+		E("ly_binary").style.display = "";
 		E("ly_pannel").style.display = "none";
 		E("ly_apply_1").style.display = "";
 		E("ly_apply_2").style.display = "none";
@@ -299,6 +307,48 @@ function save(flag){
 			if(response.result == id){
 				get_log();
 			}
+		}
+	});
+}
+
+function check_update_btn() {
+	var id = parseInt(Math.random() * 100000000);
+	var postData = {"id": id, "method": "lucky_config.sh", "params": ["check_update"], "fields": ""};
+	E("loading_block_title").innerHTML = "正在检查最新版本...";
+	showALLoadingBar();
+	$.ajax({
+		type: "POST",
+		url: "/_api/",
+		data: JSON.stringify(postData),
+		dataType: "json",
+		success: function(response) {
+			get_log(1);
+			setTimeout(function(){
+				get_dbus_data();
+				if (dbus["lucky_latest_version"]) {
+					E("latest_ver").innerHTML = "v" + dbus["lucky_latest_version"];
+					if (dbus["lucky_latest_version"] != dbus["lucky_binary"] && dbus["lucky_latest_version"] != dbus["lucky_version"]) {
+						E("btn_do_update").style.display = "";
+					}
+				}
+			}, 2500);
+		}
+	});
+}
+
+function do_update_btn() {
+	if (!confirm("确定要立即在线升级 Lucky 内核吗？\n升级过程将保留您所有的规则、证书与配置！")) return;
+	var id = parseInt(Math.random() * 100000000);
+	var postData = {"id": id, "method": "lucky_config.sh", "params": ["update_core"], "fields": ""};
+	E("loading_block_title").innerHTML = "正在升级 Lucky 内核...";
+	showALLoadingBar();
+	$.ajax({
+		type: "POST",
+		url: "/_api/",
+		data: JSON.stringify(postData),
+		dataType: "json",
+		success: function(response) {
+			get_log(0);
 		}
 	});
 }
@@ -477,14 +527,14 @@ function validateInput(input, minValue, maxValue) {
 								<tr>
 									<td bgcolor="#4D595D" colspan="3" valign="top">
 										<div>&nbsp;</div>
-										<div class="formfonttitle">Lucky <lable id="lucky_version"></lable></div>
+										<div class="formfonttitle">Lucky <label id="lucky_version"></label></div>
 										<div style="float: right; width: 15px; height: 25px; margin-top: -20px">
 											<img id="return_btn" alt="" onclick="reload_Soft_Center();" align="right" style="cursor: pointer; position: absolute; margin-left: -30px; margin-top: -25px;" title="返回软件中心" src="/images/backprev.png" onmouseover="this.src='/images/backprevclick.png'" onmouseout="this.src='/images/backprev.png'" />
 										</div>
 										<div style="margin: 10px 0 10px 5px;" class="splitLine"></div>
 										<div class="SimpleNote">
 	                                      <a href="https://lucky666.cn/docs/intro" target="_blank"><em>Lucky</em></a>&nbsp;是一款由Golang写的集合了 <em style='color: gold;'>端口转发 / DDNS / Web服务 / Stun内网穿透 / 网络唤醒 / 计划任务 / ACME自动证书 / 网络存储 </em>等功能的强大网络工具。
-											<span><a type="button" href="https://github.com/vj23456/MerlinLucky" target="_blank" class="ks_btn" style="margin-left:5px;" >项目地址</a></span>
+											<span><a type="button" href="https://github.com/mizb/MerlinLucky" target="_blank" class="ks_btn" style="margin-left:5px;" >项目地址</a></span>
 											<span><a type="button" class="ks_btn" href="javascript:void(0);" onclick="get_log(1)" style="margin-left:5px;">插件日志</a></span>
 										</div>
 										<div id="lucky_status_pannel">
@@ -504,6 +554,21 @@ function validateInput(input, minValue, maxValue) {
 													<th>内核</th>
 													<td>
 														<span style="margin-left:4px" id="lucky_binary"></span>
+													</td>
+												</tr>
+												<tr id="ly_update" style="display: none;">
+													<th>内核更新</th>
+													<td>
+														<span>当前运行：<b id="curr_ver" style="color: #00ffe4;">--</b></span>
+														<span style="margin-left: 15px;">线上最新：<b id="latest_ver" style="color: gold;">--</b></span>
+														<div style="margin-top: 8px;">
+															<a type="button" class="ks_btn" style="cursor:pointer;" onclick="check_update_btn();">🔍 检查更新</a>
+															<a type="button" class="ks_btn" id="btn_do_update" style="cursor:pointer; margin-left: 8px; display: none; background: #28a745; color: #fff;" onclick="do_update_btn();">🚀 立即更新</a>
+														</div>
+														<div style="margin-top: 8px; color: #bbb;">
+															<input type="checkbox" id="lucky_autoupdate" style="vertical-align:middle;">
+															<label for="lucky_autoupdate" style="vertical-align:middle; cursor:pointer;">每天凌晨 04:30 自动巡检并静默升级内核</label>
+														</div>
 													</td>
 												</tr>
 												<tr id="ly_pannel" style="display: none;">

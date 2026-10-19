@@ -17,8 +17,9 @@ rm -rf /koolshare/scripts/lucky_install.sh 2>/dev/null
 rm -rf /koolshare/scripts/uninstall_lucky.sh 2>/dev/null
 rm -rf /koolshare/configs/lucky 2>/dev/null
 rm -rf /tmp/upload/lucky* 2>/dev/null
-rm -rf /koolshare/perp/lucky 2>/dev/null
-rm -rf /var/run/lucky.pid /tmp/var/lucky.pid /tmp/lucky.pid 2>/dev/null
+rm -rf /koolshare/bin/lucky.bak 2>/dev/null
+rm -rf /tmp/lucky_update_sandbox 2>/dev/null
+cru d lucky_auto_update 2>/dev/null
 
 dbus remove lucky_version
 dbus remove lucky_binary
@@ -30,6 +31,8 @@ dbus remove lucky_reset_port
 dbus remove lucky_reset_safeurl
 dbus remove lucky_reset_user
 dbus remove lucky_safeurl
+dbus remove lucky_autoupdate
+dbus remove lucky_latest_version
 dbus remove softcenter_module_lucky_name
 dbus remove softcenter_module_lucky_install
 dbus remove softcenter_module_lucky_version
