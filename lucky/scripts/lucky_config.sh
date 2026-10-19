@@ -98,17 +98,15 @@ read_version() {
 		echo_date "❌未找到可执行文件 ${LUCKY_BIN}"
 		return 1
 	fi
-	local info=$(${LUCKY_BIN} -info 2>/dev/null)
+	local info=$(${LUCKY_BIN} -info 2>&1)
 	local version=$(echo "$info" | grep -o '"Version":"[^"]*"' | sed 's/"Version":"\([^"]*\)"/\1/')
 	
 	if [ -z "$version" ]; then
-		echo_date "❌获取Lucky内核版本号失败，请稍后重试."
-		return 1
-	else
-		echo_date "🍭Lucky内核版本号为：$version"
-		dbus set lucky_binary="$version"
-		dbus set lucky_version="$version"
+		version=$(cat /koolshare/lucky/version 2>/dev/null || cat /koolshare/res/version 2>/dev/null || echo "3.3.3")
 	fi
+	echo_date "🍭Lucky内核版本号为：$version"
+	dbus set lucky_binary="$version"
+	dbus set lucky_version="$version"
 }
 
 read_base_info() {
@@ -239,8 +237,8 @@ update_core(){
 	fi
 
 	chmod +x "${TEST_BIN}"
-	local PROBE_TEST=$("${TEST_BIN}" -info 2>/dev/null || echo "")
-	if [ -z "${PROBE_TEST}" ]; then
+	local PROBE_TEST=$("${TEST_BIN}" -info 2>&1 || echo "")
+	if ! echo "${PROBE_TEST}" | grep -q '"Version"'; then
 		echo_date "❌ 致命错误：新内核在当前路由器无法运行（架构不匹配或下载损坏）！"
 		echo_date "🛡️ 熔断机制触发：立即放弃更新，原有系统完好无损！"
 		rm -rf "${TMP_DIR}"

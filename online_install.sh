@@ -75,8 +75,8 @@ if [ ! -f "${TMP_DIR}/lucky/bin/lucky" ] || [ ! -f "${TMP_DIR}/lucky/install.sh"
 fi
 
 chmod +x "${TMP_DIR}/lucky/bin/lucky"
-TEST_RES=$("${TMP_DIR}/lucky/bin/lucky" -info 2>/dev/null || echo "")
-if [ -z "${TEST_RES}" ]; then
+TEST_RES=$("${TMP_DIR}/lucky/bin/lucky" -info 2>&1 || echo "")
+if ! echo "${TEST_RES}" | grep -q '"Version"'; then
     echo_date "❌ 致命错误：新内核在当前路由器架构下无法执行！"
     echo_date "🛡️ 触发防变砖熔断保护：终止安装，原有系统与配置不受任何影响。"
     rm -rf "${TMP_DIR}"
