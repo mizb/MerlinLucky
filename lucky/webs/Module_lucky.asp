@@ -223,6 +223,7 @@ function show_hide_element(){
 		E("ly_binary").style.display = "";
 		E("ly_pannel").style.display = "";
 		E("ly_apply_1").style.display = "none";
+		E("ly_apply_save").style.display = "";
 		E("ly_apply_2").style.display = "";
 		E("ly_apply_3").style.display = "";
 		E("ly_reset").style.display = "";
@@ -231,6 +232,7 @@ function show_hide_element(){
 		E("ly_binary").style.display = "";
 		E("ly_pannel").style.display = "none";
 		E("ly_apply_1").style.display = "";
+		E("ly_apply_save").style.display = "none";
 		E("ly_apply_2").style.display = "none";
 		E("ly_apply_3").style.display = "none";
 		E("ly_reset").style.display = "none";
@@ -351,6 +353,28 @@ function do_update_btn() {
 		dataType: "json",
 		success: function(response) {
 			get_log(0);
+		}
+	});
+}
+
+function save_conf_btn(){
+	var db_lucky = {};
+	db_lucky["lucky_custom_mirror"] = E("lucky_custom_mirror") ? E("lucky_custom_mirror").value.trim() : "";
+	db_lucky["lucky_autoupdate"] = E("lucky_autoupdate").checked ? "1" : "0";
+	db_lucky["lucky_enable"] = "4";
+	var id = parseInt(Math.random() * 100000000);
+	var postData = {"id": id, "method": "lucky_config.sh", "params": ["web_submit"], "fields": db_lucky};
+	E("loading_block_title").innerHTML = "正在保存 Lucky 设置...";
+	showALLoadingBar();
+	$.ajax({
+		type: "POST",
+		url: "/_api/",
+		data: JSON.stringify(postData),
+		dataType: "json",
+		success: function(response) {
+			if(response.result == id){
+				get_log(1);
+			}
 		}
 	});
 }
@@ -574,6 +598,7 @@ function validateInput(input, minValue, maxValue) {
 														<div style="margin-top: 8px; color: #bbb;">
 															<span>下载加速镜像：</span>
 															<input type="text" id="lucky_custom_mirror" name="lucky_custom_mirror" class="input_20_table" style="width:240px; vertical-align:middle;" placeholder="留空使用默认公共加速通道">
+															<a type="button" class="ks_btn" style="cursor:pointer; margin-left: 8px; vertical-align:middle; background: #28a745; color: #fff;" onclick="save_conf_btn();">💾 保存</a>
 														</div>
 													</td>
 												</tr>
@@ -614,6 +639,7 @@ function validateInput(input, minValue, maxValue) {
 										<div id="ly_apply" class="apply_gen">
 											<p>&nbsp;</p>
 											<input class="button_gen" style="display: none;" id="ly_apply_1" onClick="save(1)" type="button" value="开启" />
+											<input class="button_gen" style="display: none; background: #28a745;" id="ly_apply_save" onClick="save_conf_btn()" type="button" value="保存配置" />
 											<input class="button_gen" style="display: none;" id="ly_apply_2" onClick="save(2)" type="button" value="重启" />
 											<input class="button_gen" style="display: none;" id="ly_apply_3" onClick="save(0)" type="button" value="关闭" />
 										</div>

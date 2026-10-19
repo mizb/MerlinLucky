@@ -390,6 +390,10 @@ web_submit)
 		echo_date "🔄开始重置Lucky设置！" | tee -a ${LOG_FILE}
 		reset_param | tee -a ${LOG_FILE}
 		dbus set lucky_enable=1
+	elif [ "${lucky_enable}" == "4" ]; then
+		echo_date "💾正在保存配置..." | tee -a ${LOG_FILE}
+		dbus set lucky_enable=1
+		echo_date "✅配置保存成功！" | tee -a ${LOG_FILE}
 	else
 		echo_date "ℹ️停止Lucky！" | tee -a ${LOG_FILE}
 		close_lucky | tee -a ${LOG_FILE}
